@@ -63,14 +63,14 @@ To search events, you need a subdomain and either a username/password combo or a
 You can start a search like this, and the process will hang until search results are returned by the
 API, at which point you'll have a list of events:
 
-    events = loggly.search('foo:"bar"', from='-1D', until='now')
+    events = loggly.search('foo:"bar"', frm='-1D', til='now')
 
 Or you can set `paginate=True` to instead get a SearchIterator back immediately. Each "next" call
 will cause a request for more results to come from Loggly. This is essentially a less-automated way
 of accomplishing the same thing as above, except you can run other code between pages of results.
 Consider:
 
-    search = loggly.search('foo:"bar"', from='-1D', until='now', paginate=True, pagesize=100)
+    search = loggly.search('foo:"bar"', frm='-1D', til='now', paginate=True, pagesize=100)
     events = list()
     for page in search:
         events.extend(page)
