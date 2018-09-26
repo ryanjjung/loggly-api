@@ -25,7 +25,7 @@ class AuthenticationError(LogglyError):
 class RequestError(LogglyError):
     def __init__(self, response):
         self.response = response
-        self.message = response.json()['message']
+        self.message = response.text
         self.status_code = response.status_code
         self.reason = response.reason
 
