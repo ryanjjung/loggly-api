@@ -25,7 +25,7 @@ class AuthenticationError(LogglyError):
 class RequestError(LogglyError):
     def __init__(self, response):
         self.response = response
-        self.message = response.json()['message']
+        self.message = response.text
         self.status_code = response.status_code
         self.reason = response.reason
 
@@ -50,14 +50,12 @@ def __getauth():
         auth = __basicauth()
     return auth
 
-def __format_params(params):
-    return '&'.join([ '{}={}'.format(key, params[key]) for key in params ])
-
 
 class SearchIterator(object):
-    def __init__(self, url, auth):
+    def __init__(self, url, auth, params):
         self.url = url
         self.auth = auth
+        self.params = params
 
     def __iter__(self):
         return self
@@ -65,19 +63,19 @@ class SearchIterator(object):
     def __next__(self):
         if self.url is None: raise StopIteration
 
-        response = SearchIterator.get_page(self.url, self.auth)
+        response = SearchIterator.get_page(self.url, self.auth, self.params)
         self.url = response['next'] if 'next' in response else None
         if 'events' in response:
             return response['events']
         return list()
 
-    def get_page(url, auth):
+    def get_page(url, auth, params):
         response = None
         # auth can be an API token header dict or a basic auth object; react accordingly
         if isinstance(auth, HTTPBasicAuth):
-            response = get(url, auth=auth)
+            response = get(url, auth=auth, params=params)
         elif isinstance(auth, dict):
-            response = get(url, headers=auth)
+            response = get(url, headers=auth, params=params)
 
         if response.status_code == 200:
             return response.json()
@@ -186,16 +184,13 @@ def search(query=None, frm=None, til=None, paginate=False, pagesize=None, order=
             params['order'] = order if order in [ 'asc', 'desc' ] else None
         if not order: params.pop('order', None)
 
-        if len(params.keys()) > 0:
-            url = '{}?{}'.format(baseurl, __format_params(params))
-        else:
-            url = baseurl
+        url = baseurl
 
         if paginate:
-            return SearchIterator(url, auth)
+            return SearchIterator(url, auth, params)
         else:
             while True:
-                response = SearchIterator.get_page(url, auth)
+                response = SearchIterator.get_page(url, auth, params)
                 if response:
                     if 'events' in response:
                         events.extend(response['events'])
