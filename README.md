@@ -107,7 +107,7 @@ from the iterator.
 
 ### [Account Info](https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/api-account-info.htm)
 
-Retrieving account info requires a subdomain and an API token.
+_Retrieving account info requires a subdomain and an API token._
 
     info = loggly.account_info()
 
