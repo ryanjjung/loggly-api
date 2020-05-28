@@ -5,11 +5,11 @@
 This library allows a user to work with Loggly's APIs through simple function calls.
 
 **Note:** As of version 0.3.0, this library only supports Loggly's API v2 as described
-[here](https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/api-overview.htm)
+[here](https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/api-overview.htm).
 Additionally, only API tokens are supported as an authentication type. Username/password (HTTP Basic
 Auth) support has been ripped out. Other breaking changes have also been implemented, such as the
 change of the `loggly.token` variable to `loggly.customer_token` to be consistent with Loggly's
-terminology. `RequestError`s no longer represent responses and are now called `ResponseError`s.
+terminology. `RequestError`s no longer represent HTTP responses. They are now called `ResponseError`s.
 A `RequestError` is now something completely different, and is documented below. `InvalidStatError`
 no longer exists, and has been converted into a `RequestError`.
 
@@ -30,7 +30,7 @@ Unless you need an old version, in which case, you should try:
 
     import loggly
 
-You can set various access credentials; different ones are needed for certain operations.
+You can set various access credentials; different ones are needed for different operations.
 
     loggly.subdomain = 'your_subdomain'
     loggly.customer_token = 'your_customer_token'
@@ -120,7 +120,7 @@ Calling `account_info()` also updates some convenience properties in the module:
 
 ### [Statistics](https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/stats-api.htm)
 
-The stats API requires a subdomain and either a username/password combo or an API token.
+_The stats API requires a subdomain and an API token._
 
 You can call the `stats` function to get statistical data about numerical fields in your log events.
 In the fictional example below, you'd get back the average request time for your app.
