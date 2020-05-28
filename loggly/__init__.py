@@ -1,13 +1,9 @@
 import json
-
-from requests import get, post
-from requests.auth import HTTPBasicAuth
+import requests
 
 # Auth data
-token = None
+customer_token = None
 api_token = None
-user = None
-password = None
 
 # Account info
 tokens = None
@@ -17,146 +13,186 @@ volume_limit = None
 
 # Exception related stuff
 class LogglyError(Exception):
+    '''
+    Base exception with no function outside of identifying the error as one from
+    this library.
+    '''
     pass
 
 class AuthenticationError(LogglyError):
+    '''
+    Exception related to authentication with the API
+    '''
     pass
 
 class RequestError(LogglyError):
+    '''
+    Exception that gets raised when the library is able to detect a request
+    formation error before the request gets made.
+    '''
+    def __init__(self, reason):
+        self.reason = reason
+
+class ResponseError(LogglyError):
+    '''
+    Exception that gets raised when an API call results in a bad status code
+    '''
     def __init__(self, response):
         self.response = response
         self.message = response.text
         self.status_code = response.status_code
         self.reason = response.reason
 
-class InvalidStatError(LogglyError):
-    def __init__(self, stat):
-        self.stat = stat
+# Internally used functions
+def get_auth():
+    '''
+    Returns an appropriate HTTP header for API token authentication
+    '''
 
-# "Private" functions
-def __basicauth():
-    if user is None or password is None:
-        return None
-    return HTTPBasicAuth(user, password)
-
-def __apiauth():
-    if api_token is None:
-        return None
+    if api_token is None: return None
     return { 'Authorization': 'Bearer {}'.format(api_token) }
 
-def __getauth():
-    auth = __apiauth()
-    if not auth:
-        auth = __basicauth()
-    return auth
+def call_api(path, method='GET', params=None):
+    '''
+    Calls the API at the given path, using the given method and query parameters
+    '''
 
+    auth = get_auth()
+    if auth:
+        url = 'https://{}.loggly.com{}'.format(subdomain, path)
+        response = requests.request(method, url, headers=auth, params=params)
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise ResponseError(response)
+    else:
+        raise AuthenticationError()
+
+def get_next_id_from_url(url):
+    '''
+    The Loggly search pagination endpoint returns a "next" field which contains
+    a full URL. Our call_api function wants just the "next" page ID. This
+    function extracts that ID so we can take advantage of the error handling and
+    other features of the call_api function.
+    '''
+
+    try:
+        query_str = url.split('?')[1]
+    except KeyError:
+        return None
+    params = query_str.split('&')
+    for param in params:
+        if param[:5] == 'next=':
+            return param[5:]
+    return None
 
 class SearchIterator(object):
-    def __init__(self, url, auth, params):
-        self.url = url
-        self.auth = auth
+    '''
+    An iterator that handles event search pagination
+    '''
+
+    def __init__(self, params):
         self.params = params
+        self.next = None
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        if self.url is None: raise StopIteration
+        '''
+        Get the next page or raise a StopIteration exception
+        '''
 
-        response = SearchIterator.get_page(self.url, self.auth, self.params)
-        self.url = response['next'] if 'next' in response else None
-        if 'events' in response:
-            return response['events']
-        return list()
+        params = dict()
+        if self.next == '':
+            raise StopIteration
+        elif self.next is not None:
+            self.params['next'] = self.next
 
-    def get_page(url, auth, params):
-        response = None
-        # auth can be an API token header dict or a basic auth object; react accordingly
-        if isinstance(auth, HTTPBasicAuth):
-            response = get(url, auth=auth, params=params)
-        elif isinstance(auth, dict):
-            response = get(url, headers=auth, params=params)
-
-        if response.status_code == 200:
-            return response.json()
+        response = call_api('/apiv2/events/iterate', params=self.params)
+        if 'next' in response:
+            self.next = get_next_id_from_url(response['next'])
         else:
-            raise RequestError(response)
-        return None
+            self.next = ''
+        return response['events'] if 'events' in response else list()
 
-
-# The "exposed" functions
+# User-intended functions
 def account_info():
+    '''
+    Retrieves account-level metadata and stores it in some convenience variables
+    '''
+
     global tokens, subdomain, retention, volume_limit
 
-    # Try an API token first; failing that, try HTTPBasicAuth
-    auth = __getauth()
-
-    if auth:
-        url = 'https://{}.loggly.com/apiv2/customer'.format(subdomain)
-        if isinstance(auth, HTTPBasicAuth):
-            response = get(url, auth=auth)
-        elif isinstance(auth, dict):
-            response = get(url, headers=auth)
-
-        print(response.status_code)
-        if response.status_code == 200:
-            info = response.json()
-            tokens = info['tokens']
-            subdomain = info['subdomain']
-            retention = info['subscription']['retention_days']
-            volume_limit = info['subscription']['volume_limit_mb']
-            return info
-        else:
-            raise RequestError(response)
-    else:
-        raise AuthenticationError()
-
-    return None
+    response = call_api('/apiv2/customer')
+    tokens = response['tokens']
+    subdomain = response['subdomain']
+    retention = response['subscription']['retention_days']
+    volume_limit = response['subscription']['volume_limit_mb']
+    return response
 
 def submit(event, tag=None):
-    if not token:
+    '''
+    Ships a single event to Loggly. `tag` is an optional tag to apply to the event.
+    Autodetects what content type to use based on the contnet of `event`.
+    '''
+
+    # Don't bother with anything else if we're not authenticated
+    if not customer_token:
         raise AuthenticationError()
 
-    url = 'https://logs-01.loggly.com/inputs/{}/'.format(token)
+    # This feature of Loggly's API uses a different URL entirely, so we do not use
+    # the call_api convenience function here.
+    url = 'https://logs-01.loggly.com/inputs/{}'.format(customer_token)
     if tag:
-        url += 'tag/{}'.format(tag)
+        url += '/tag/{}'.format(tag)
 
-    content_type = 'text/plain'
+    # Detect event format
     if isinstance(event, dict):
         event = json.dumps(event)
         content_type = 'application/x-www-form-urlencoded'
-    if isinstance(event, str):
+    elif isinstance(event, str):
         try:
             json.loads(event)
             content_type = 'application/x-www-form-urlencoded'
         except ValueError:
-            pass
+            content_type = 'text/plain'
 
-    response = post(
+    response = requests.post(
         url,
         headers={'Content-Type': content_type},
         data=event)
 
-
     if response.status_code == 200:
         return True
     else:
-        raise RequestError(response)
+        raise ResponseError(response)
 
 def bulk_submit(events, tag=None):
-    if not token:
+    '''
+    Ships multiple events in a single request. `tag` is an optional tag to apply
+    to the events. `events` is a Python list.
+
+    Loggly places limitations on the size of this data. At the time of this
+    writing, that's 1 MB per event and 5 MB per HTTP request.
+
+    https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/http-bulk-endpoint.htm
+    '''
+
+    if not customer_token:
         raise AuthenticationError()
 
-    url = 'https://logs-01.loggly.com/bulk/{}/'.format(token)
+    url = 'https://logs-01.loggly.com/bulk/{}'.format(customer_token)
     if tag:
-        url += 'tag/{}'.format(tag)
+        url += '/tag/{}'.format(tag)
 
     if isinstance(events, list):
         events = '\n'.join(events)
+    elif not isinstance(events, str):
+        raise RequestError('events must be a list or string')
 
-    print(events)
-
-    response = post(
+    response = requests.post(
         url,
         headers={'Content-Type': 'text/plain'},
         data=events)
@@ -164,47 +200,35 @@ def bulk_submit(events, tag=None):
     if response.status_code == 200:
         return True
     else:
-        raise RequestError(response)
+        raise ResponseError(response)
 
 def search(query=None, frm=None, til=None, paginate=False, pagesize=None, order=None):
     # Events Retrieval API: https://www.loggly.com/docs/paginating-event-retrieval-api/
 
-    # Try an API token first; failing that, try HTTPBasicAuth
-    auth = __getauth()
+    if order and order not in [ 'asc', 'desc' ]:
+        raise RequestError('Search order must be "asc" or "desc"')
 
-    if auth:
-        baseurl = 'https://{}.loggly.com/apiv2/events/iterate'.format(subdomain)
-        events = list()
-        params = dict()
-        if query: params['q'] = query
-        if frm: params['from'] = frm
-        if til: params['until'] = til
-        if pagesize: params['size'] = pagesize
-        if order:
-            params['order'] = order if order in [ 'asc', 'desc' ] else None
-        if not order: params.pop('order', None)
+    events = list()
+    params = dict()
+    if query: params['q'] = query
+    if frm: params['from'] = frm
+    if til: params['until'] = til
+    if pagesize: params['size'] = pagesize
+    if order: params['order'] = order
 
-        url = baseurl
-
-        if paginate:
-            return SearchIterator(url, auth, params)
-        else:
-            while True:
-                response = SearchIterator.get_page(url, auth, params)
-                if response:
-                    if 'events' in response:
-                        events.extend(response['events'])
-                    if 'next' in response:
-                        url = response['next']
-                    else:
-                        break
-            return events
+    searcher = SearchIterator(params)
+    if paginate:
+        return searcher
     else:
-        raise AuthenticationError()
-
-    return None
+        for page in searcher:
+            if 'events' in page:
+                events.extend(page['events'])
+        return events
 
 def stats(stat='all', field=None, query='*', frm=None, til=None):
+    if not field:
+        raise RequestError('For stats calls, "field" is required')
+
     # Validate the stat field
     stat = stat.lower()
     if stat not in [
@@ -213,38 +237,40 @@ def stats(stat='all', field=None, query='*', frm=None, til=None):
         'min',
         'max',
         'percentiles',
-        'variance',
-        'std_deviation',
-        'sum_of_squares',
-        'count',
+        'value_count',
+        'cardinality',
         'stats',
         'extended',
         'all' ]:
-            raise InvalidStatError(stat)
+            raise RequestError('{} is not a valid stats option'.format(stat))
 
-    auth = __getauth()
+    params = dict()
+    if query: params['q'] = query
+    if frm: params['from'] = frm
+    if til: params['until'] = til
 
-    if auth:
-        baseurl = 'https://{}.loggly.com/apiv2/stats/{}/{}'.format(subdomain, stat, field)
-        params = dict()
-        if query: params['q'] = query
-        if frm: params['from'] = frm
-        if til: params['until'] = til
-        if len(params.keys()) > 0:
-            url = '{}?{}'.format(baseurl, __format_params(params))
-        else:
-            url = baseurl
+    path = '/apiv2/stats/{}'.format(stat)
+    if field: path = '{}/{}'.format(path, field)
+    return call_api(path, params=params)
 
-        response = None
-        if isinstance(auth, dict):
-            response = get(url, headers=auth)
-        elif isinstance(auth, HTTPBasicAuth):
-            response = get(url, auth=auth)
+def volume_metrics(frm=None, til=None, group_by=None, host=None, app=None, measurement_types=None):
+    valid_group_bys = [ 'host', 'app' ]
+    valid_measurement_types = [ 'volume_bytes', 'count' ]
+    if group_by:
+        for gp in group_by:
+            if gp not in valid_group_bys:
+                return False
+    if measurement_types:
+        for mt in measurement_types:
+            if mt not in valid_measurement_types:
+                return False
 
-        if response.status_code == 200:
-            return response.json()
-        else:
-            raise RequestError(response)
-    else:
-        raise AuthenticationError()
+    params = dict()
+    if frm: params['from'] = frm
+    if til: params['until'] = til
+    if group_by: params['group_by'] = ','.join(group_by)
+    if host: params['host'] = host
+    if app: params['app'] = app
+    if measurement_types: params['measurement_types'] = ','.join(measurement_types)
 
+    return call_api('/apiv2/volume-metrics', params=params)
