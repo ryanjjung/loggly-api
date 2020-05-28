@@ -6,7 +6,7 @@ customer_token = None
 api_token = None
 
 # Account info
-tokens = None
+customer_tokens = None
 retention = None
 subdomain = None
 volume_limit = None
@@ -123,10 +123,10 @@ def account_info():
     Retrieves account-level metadata and stores it in some convenience variables
     '''
 
-    global tokens, subdomain, retention, volume_limit
+    global customer_tokens, subdomain, retention, volume_limit
 
     response = call_api('/apiv2/customer')
-    tokens = response['tokens']
+    customer_tokens = response['tokens']
     subdomain = response['subdomain']
     retention = response['subscription']['retention_days']
     volume_limit = response['subscription']['volume_limit_mb']
