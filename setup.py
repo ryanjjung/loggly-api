@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='loggly-api',
-    version='0.2.1',
+    version='0.3.0',
     description="A Python library to work with Loggly's APIs",
     url='https://github.com/ryanjjung/loggly-api',
     author='Ryan Jung',
