@@ -130,6 +130,23 @@ In the fictional example below, you'd get back the average request time for your
 Refer to the [documentation](https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/stats-api.htm)
 for a complete list of valid statistics you can call for.
 
+### Volume Metrics
+
+_The volume metrics API requires a subdomain and an API token._
+
+First of all, this doesn't appear to be a documented feature. I've recieved a PDF of docs from an account representative that I can't find a corresponding website for.
+
+This call lets you gather broad aggregate statistics about the number of events and their total size within a period of time, filtered by the host and "app" that generated the events. The following call would return the stats from the past day.
+
+    metrics = loggly.volume_metrics(frm='-1d', til='now')
+
+Other parameters that are supported:
+
+* group_by (str)
+* host (str)
+* app (str)
+* measurement_types (list of str)
+
 ## Exceptions
 
 The base class for all exceptions in this module is `loggly.LogglyError`, but it's nothing special
