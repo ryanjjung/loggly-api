@@ -202,6 +202,16 @@ def bulk_submit(events, tag=None):
     else:
         raise ResponseError(response)
 
+def count(query=None, frm=None, til=None, include_volume=None):
+    params = dict()
+    if query: params['q'] = query
+    if frm: params['from'] = frm
+    if til: params['until'] = til
+    if include_volume: params['include_volume'] = 'true'
+
+    count = call_api('/apiv2/events/count', params=params)
+    return count
+
 def search(query=None, frm=None, til=None, paginate=False, pagesize=None, order=None):
     # Events Retrieval API: https://www.loggly.com/docs/paginating-event-retrieval-api/
 

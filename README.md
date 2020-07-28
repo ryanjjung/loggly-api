@@ -105,6 +105,19 @@ Loggly, try making your page size smaller. The effects of this setting are not a
 and the function may return faster. But when it's `True`, you'll get back that many events at a time
 from the iterator.
 
+### [Event Count](https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/event-counts.htm)
+
+_To count events, you need a subdomain and an API token._
+
+Event counts support the same querying and time-boxing options as searching. It also supports the
+`include_volume` option, which reports the byte size of the events queried. This function call
+returns a dictionary that always contains a `count` field, and which also contains a `volume`
+field if you've asked for it. For example:
+
+    counts = loggly.count('foo:"bar"', frm='-1D', til='now', include_volume=True)
+
+    >>> {'count': 2574134, 'volume': 3095600785}
+
 ### [Account Info](https://documentation.solarwinds.com/en/Success_Center/loggly/Content/admin/api-account-info.htm)
 
 _Retrieving account info requires a subdomain and an API token._
