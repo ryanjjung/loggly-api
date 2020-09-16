@@ -110,7 +110,11 @@ class SearchIterator(object):
         elif self.next is not None:
             self.params['next'] = self.next
 
-        response = call_api('/apiv2/events/iterate', params=self.params)
+        try:
+            response = call_api('/apiv2/events/iterate', params=self.params)
+        except ResponseError:
+            raise
+
         if 'next' in response:
             self.next = get_next_id_from_url(response['next'])
         else:
