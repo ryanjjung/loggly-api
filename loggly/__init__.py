@@ -235,8 +235,7 @@ def search(query=None, frm=None, til=None, paginate=False, pagesize=None, order=
         return searcher
     else:
         for page in searcher:
-            if 'events' in page:
-                events.extend(page['events'])
+            events.extend(page)
         return events
 
 def stats(stat='all', field=None, query='*', frm=None, til=None):
